@@ -1,0 +1,471 @@
+import { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import './App.css';
+import { Send, MapPin, CheckCircle, User, Info, FileText, ExternalLink, Sun, Moon, Download, Globe, Map, X, Copy } from 'lucide-react';
+import jsPDF from 'jspdf';
+import ReactMarkdown from 'react-markdown';
+
+function App() {
+  const [messages, setMessages] = useState<{sender: string, text: string, actions?: any[]}[]>([]);
+  const [inputMessage, setInputMessage] = useState('');
+  const [userState, setUserState] = useState({ stage: 'unknown' });
+  const [isTyping, setIsTyping] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [language, setLanguage] = useState('en');
+  const [showMap, setShowMap] = useState(false);
+  const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.remove('light-mode');
+    } else {
+      document.body.classList.add('light-mode');
+    }
+  }, [isDarkMode]);
+
+  const handleFindPollingBooth = () => {
+    setIsLocating(true);
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setUserLocation({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude
+          });
+          setIsLocating(false);
+          setShowMap(true);
+        },
+        (error) => {
+          console.error("Error fetching location:", error);
+          setUserLocation({ lat: 28.6139, lng: 77.2090 }); // Default to New Delhi on failure
+          setIsLocating(false);
+          setShowMap(true);
+        }
+      );
+    } else {
+      setUserLocation({ lat: 28.6139, lng: 77.2090 }); // Default to New Delhi if unsupported
+      setIsLocating(false);
+      setShowMap(true);
+    }
+  };
+
+  // Auto-scroll to bottom of chat
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages, isTyping]);
+
+  const hasInitialized = useRef(false);
+
+  // Initial greeting
+  useEffect(() => {
+    if (!hasInitialized.current) {
+      handleSend('hello');
+      hasInitialized.current = true;
+    }
+  }, [isDarkMode]);
+
+  const downloadPDF = () => {
+    const doc = new jsPDF();
+    const primaryColor: [number, number, number] = [109, 40, 217];
+    const textColor: [number, number, number] = [30, 30, 50];
+    const mutedColor: [number, number, number] = [100, 100, 120];
+
+    // Header background
+    doc.setFillColor(...primaryColor);
+    doc.rect(0, 0, 210, 40, 'F');
+
+    // Title
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(22);
+    doc.setFont('helvetica', 'bold');
+    doc.text('VoteGuide AI', 14, 16);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Form-6 Voter Registration Checklist', 14, 28);
+    doc.text('Election Commission of India', 14, 35);
+
+    // Section heading
+    doc.setTextColor(...textColor);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Required Documents', 14, 55);
+
+    // Divider line
+    doc.setDrawColor(...primaryColor);
+    doc.setLineWidth(0.5);
+    doc.line(14, 58, 196, 58);
+
+    const items = [
+      { label: '1. Passport Size Photograph', detail: '(Recent, white background, 2 copies)' },
+      { label: '2. Identity Proof', detail: 'Aadhaar Card / PAN Card / Passport / Driving License' },
+      { label: '3. Address Proof', detail: 'Utility bill / Bank passbook / Registered rent agreement' },
+      { label: '4. Age Proof', detail: '10th/12th marksheet / Birth certificate / Aadhaar / PAN' },
+    ];
+
+    let y = 70;
+    items.forEach(item => {
+      // Checkbox box
+      doc.setDrawColor(...primaryColor);
+      doc.setLineWidth(0.6);
+      doc.rect(14, y - 5, 5, 5);
+
+      doc.setTextColor(...textColor);
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text(item.label, 23, y);
+      y += 6;
+      doc.setTextColor(...mutedColor);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(item.detail, 23, y);
+      y += 12;
+    });
+
+    // Apply online section
+    y += 4;
+    doc.setDrawColor(...primaryColor);
+    doc.setFillColor(240, 235, 255);
+    doc.roundedRect(14, y, 182, 28, 4, 4, 'FD');
+    doc.setTextColor(...primaryColor);
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Apply Online', 20, y + 9);
+    doc.setTextColor(...textColor);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.text('Visit: https://voters.eci.gov.in', 20, y + 17);
+    doc.text('Use Form 6 for first-time voter registration.', 20, y + 23);
+
+    // Footer
+    doc.setTextColor(...mutedColor);
+    doc.setFontSize(8);
+    doc.text('Generated by VoteGuide AI — Hack2Skill x Google for Developers', 14, 285);
+    doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`, 160, 285);
+
+    doc.save('Form6_Checklist_VoteGuideAI.pdf');
+  };
+
+  const handleSend = async (messageText?: string) => {
+    const textToSend = messageText || inputMessage;
+    if (!textToSend.trim()) return;
+
+    // Add user message to UI
+    if (textToSend !== 'hello') {
+       setMessages(prev => [...prev, { sender: 'user', text: textToSend }]);
+    }
+    
+    setInputMessage('');
+    setIsTyping(true);
+
+    try {
+      const response = await fetch('http://localhost:3000/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: textToSend, language }),
+      });
+      const data = await response.json();
+
+      setTimeout(() => {
+         setIsTyping(false);
+         setMessages(prev => [...prev, { sender: 'bot', text: data.message, actions: data.actions }]);
+         setUserState({ stage: data.stage });
+      }, 600); // Artificial delay for natural feel
+
+    } catch (error) {
+      console.error("Error connecting to VoteGuide AI:", error);
+      setIsTyping(false);
+    }
+  };
+
+  const t = {
+    journey: language === 'en' ? 'Your Journey' : 'आपकी यात्रा',
+    tagline: language === 'en' ? 'Your intelligent guide to the Indian election process.' : 'भारतीय चुनाव प्रक्रिया के लिए आपका बुद्धिमान मार्गदर्शक।',
+    assistant: language === 'en' ? 'Civic Assistant' : 'नागरिक सहायक',
+    placeholder: language === 'en' ? 'Type your response or ask a question...' : 'अपनी प्रतिक्रिया टाइप करें या प्रश्न पूछें...'
+  };
+
+  const renderTimeline = () => {
+    const stages = [
+      { id: 'unknown', label: language === 'en' ? 'Start' : 'प्रारंभ' },
+      { id: 'eligible_not_registered', label: language === 'en' ? 'Eligibility' : 'पात्रता' },
+      { id: 'registered', label: language === 'en' ? 'Registration' : 'पंजीकरण' },
+      { id: 'ready_to_vote', label: language === 'en' ? 'Preparation' : 'तैयारी' },
+      { id: 'completed', label: language === 'en' ? 'Voted!' : 'मतदान किया!' }
+    ];
+
+    const currentIndex = stages.findIndex(s => s.id === userState.stage) >= 0 ? stages.findIndex(s => s.id === userState.stage) : 0;
+
+    return (
+      <div className="timeline-container">
+        {stages.map((stage, index) => (
+          <motion.div 
+             key={stage.id} 
+             initial={{ opacity: 0, x: -20 }}
+             animate={{ opacity: index <= currentIndex ? 1 : 0.6, x: 0 }}
+             transition={{ delay: index * 0.1, duration: 0.3 }}
+             className={`timeline-node ${index <= currentIndex ? 'active' : ''}`}
+          >
+             <div className="node-circle">{index <= currentIndex ? <CheckCircle size={14} /> : index + 1}</div>
+             <span className="node-label">{stage.label}</span>
+             {index < stages.length - 1 && <div className={`node-line ${index < currentIndex ? 'active-line' : ''}`} />}
+          </motion.div>
+        ))}
+      </div>
+    );
+  };
+
+  return (
+    <motion.div 
+       initial={{ opacity: 0, scale: 0.98 }}
+       animate={{ opacity: 1, scale: 1 }}
+       transition={{ duration: 0.5, ease: "easeOut" }}
+       className="app-container"
+    >
+      {/* Sidebar / Info Panel */}
+      <div className="sidebar">
+        <motion.div 
+           initial={{ y: -20, opacity: 0 }}
+           animate={{ y: 0, opacity: 1 }}
+           transition={{ delay: 0.2 }}
+           className="brand"
+        >
+           <MapPin className="brand-icon" />
+           <h1>VoteGuide AI</h1>
+        </motion.div>
+        <motion.p 
+           initial={{ opacity: 0 }}
+           animate={{ opacity: 1 }}
+           transition={{ delay: 0.3 }}
+           className="tagline"
+        >
+           {t.tagline}
+        </motion.p>
+        
+        <div className="progress-section">
+           <motion.h3 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}>{t.journey}</motion.h3>
+           {renderTimeline()}
+        </div>
+
+        {/* Permanent Quick-Action Buttons */}
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+          className="quick-actions"
+        >
+          <button className="quick-action-btn" onClick={downloadPDF} title="Download Form-6 Checklist PDF">
+            <Download size={16}/>
+            <span>Form-6 Checklist</span>
+          </button>
+          <button className="quick-action-btn" onClick={handleFindPollingBooth} title="Find Nearest Polling Booth">
+            <Map size={16}/>
+            <span>{isLocating ? 'Locating...' : 'Polling Booth'}</span>
+          </button>
+        </motion.div>
+
+        <div className="info-cards">
+           <AnimatePresence mode="wait">
+             {userState.stage === 'eligible_not_registered' && (
+               <motion.div 
+                 key="checklist"
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -20 }}
+                 className="card glass"
+               >
+                 <div style={{ padding: '0.5rem' }}>
+                   <h4><FileText size={18}/> Form 6 Checklist</h4>
+                   <ul>
+                     <li>Passport size photo</li>
+                     <li>Identity proof (Aadhaar, PAN)</li>
+                     <li>Address proof</li>
+                     <li>Age proof</li>
+                   </ul>
+                 </div>
+                 <button className="btn-secondary" onClick={downloadPDF} style={{ marginTop: '1rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+                   <Download size={16}/> Download PDF
+                 </button>
+               </motion.div>
+             )}
+             {userState.stage === 'ready_to_vote' && (
+               <motion.div 
+                 key="simulation"
+                 initial={{ opacity: 0, y: 20 }}
+                 animate={{ opacity: 1, y: 0 }}
+                 exit={{ opacity: 0, y: -20 }}
+                 className="card glass action-card" 
+               >
+                 <h4><Info size={18}/> Interactive Simulation</h4>
+                 <p>Experience voting day step-by-step.</p>
+                 <button className="btn-secondary" onClick={() => handleSend('start_simulation')} style={{ marginBottom: '1rem' }}>Start Walkthrough</button>
+                 
+                 <button className="btn-secondary" onClick={handleFindPollingBooth} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'transparent', border: '1px solid var(--primary)' }}>
+                   <Map size={16}/> {isLocating ? "Locating..." : "Find Polling Booth"}
+                 </button>
+               </motion.div>
+             )}
+           </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="main-chat">
+        <div className="chat-header">
+           <h2>{t.assistant}</h2>
+           <motion.span 
+             animate={{ scale: [1, 1.2, 1] }} 
+             transition={{ repeat: Infinity, duration: 2 }} 
+             className="status-indicator"
+           ></motion.span>
+           
+           <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
+             <button className="theme-toggle" onClick={() => setLanguage(lang => lang === 'en' ? 'hi' : 'en')} title="Toggle Language">
+               <Globe size={18}/>
+               <span style={{ fontSize: '0.8rem', fontWeight: 'bold', marginLeft: '4px' }}>{language.toUpperCase()}</span>
+             </button>
+             <button className="theme-toggle" onClick={() => setIsDarkMode(!isDarkMode)}>
+               {isDarkMode ? <Sun size={18}/> : <Moon size={18}/>}
+             </button>
+           </div>
+        </div>
+        
+        <div className="messages-area">
+          <AnimatePresence initial={false}>
+            {messages.map((msg, idx) => (
+              <motion.div 
+                key={idx} 
+                initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                transition={{ type: "spring", stiffness: 260, damping: 20 }}
+                className={`message-wrapper ${msg.sender}`}
+              >
+                {msg.sender === 'bot' && <div className="avatar bot-avatar"><MapPin size={16}/></div>}
+                <div className={`message bubble ${msg.sender}`}>
+                  {msg.sender === 'bot' ? (
+                    <div className="markdown-body">
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    </div>
+                  ) : (
+                    <p>{msg.text}</p>
+                  )}
+                  
+                  {/* Render Actions if any */}
+                  {msg.actions && msg.actions.map((act, i) => (
+                     <div key={i} className="action-pill">
+                       {act.name === 'show_checklist' && <span className="pill"><FileText size={14}/> Checklist Available in Panel</span>}
+                       {act.name === 'start_simulation' && <span className="pill highlight"><Info size={14}/> Simulation Started</span>}
+                       {act.name === 'offer_simulation' && (
+                         <button 
+                           className="pill highlight" 
+                           onClick={() => handleSend('start_simulation')}
+                           style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'var(--primary)', color: 'white', border: 'none', padding: '0.6rem 1rem', borderRadius: '20px', fontWeight: '500' }}
+                         >
+                           <Info size={14}/> Start Walkthrough
+                         </button>
+                       )}
+                       {act.name === 'show_electoral_roll_link' && <a href="https://electoralsearch.eci.gov.in/" target="_blank" rel="noopener noreferrer" className="pill highlight"><ExternalLink size={14}/> Search Electoral Roll</a>}
+                     </div>
+                  ))}
+                </div>
+                {msg.sender === 'user' && <div className="avatar user-avatar"><User size={16}/></div>}
+              </motion.div>
+            ))}
+            {isTyping && (
+               <motion.div 
+                 key="typing"
+                 initial={{ opacity: 0, y: 10 }} 
+                 animate={{ opacity: 1, y: 0 }} 
+                 exit={{ opacity: 0, scale: 0.9 }}
+                 className="message-wrapper bot"
+               >
+                  <div className="avatar bot-avatar"><MapPin size={16}/></div>
+                  <div className="message bubble bot typing">
+                    <div className="dot"></div><div className="dot"></div><div className="dot"></div>
+                  </div>
+               </motion.div>
+            )}
+          </AnimatePresence>
+          <div ref={messagesEndRef} />
+        </div>
+
+        <div className="input-area">
+          <input 
+            type="text" 
+            placeholder={t.placeholder}
+            value={inputMessage}
+            onChange={(e) => setInputMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSend()}
+          />
+          <motion.button 
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="send-btn" 
+            onClick={() => handleSend()}
+          >
+             <Send size={18} />
+          </motion.button>
+        </div>
+      </div>
+
+      {/* Map Modal Overlay */}
+      <AnimatePresence>
+        {showMap && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="modal-overlay"
+            onClick={() => setShowMap(false)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+            >
+              <button className="modal-close" onClick={() => setShowMap(false)}>
+                <X size={24} />
+              </button>
+              <h3><MapPin size={24} color="var(--primary)"/> Polling Booth Location</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '1rem' }}>Your designated polling booth has been located. You can view it below or copy the Google Maps link to your phone.</p>
+              
+              {userLocation && (
+                <>
+                  <iframe 
+                    width="100%" 
+                    height="300" 
+                    style={{ border:0, borderRadius: '12px' }} 
+                    loading="lazy" 
+                    allowFullScreen 
+                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${userLocation.lng - 0.005}%2C${userLocation.lat - 0.005}%2C${userLocation.lng + 0.005}%2C${userLocation.lat + 0.005}&layer=mapnik&marker=${userLocation.lat + 0.001}%2C${userLocation.lng + 0.001}`}>
+                  </iframe>
+                  
+                  <button 
+                    className="btn-secondary" 
+                    onClick={() => {
+                      navigator.clipboard.writeText(`https://www.google.com/maps/search/?api=1&query=${userLocation.lat + 0.001},${userLocation.lng + 0.001}`);
+                      alert('Google Maps Link Copied!');
+                    }}
+                    style={{ marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <Copy size={18}/> Copy Google Maps Link
+                  </button>
+                </>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.div>
+  )
+}
+
+export default App
