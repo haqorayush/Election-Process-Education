@@ -8,8 +8,9 @@ import ReactMarkdown from 'react-markdown';
 type ChatMode = 'guided' | 'ai';
 
 function App() {
-  const [messages, setMessages] = useState<{sender: string, text: string, actions?: any[], suggestions?: string[]}[]>([]);
-  const [aiMessages, setAiMessages] = useState<{sender: string, text: string}[]>([]);
+  type Message = {sender: string, text: string, actions?: any[], suggestions?: string[]};
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [aiMessages, setAiMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [userState, setUserState] = useState({ stage: 'unknown' });
   const [isTyping, setIsTyping] = useState(false);

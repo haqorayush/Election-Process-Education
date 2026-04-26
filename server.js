@@ -92,7 +92,7 @@ const fallbackOrGemini = async (message, language, fallbackResponse) => {
     try {
       const langPrompt = language === 'hi' ? "Keep your answer entirely in Hindi." : "Keep your answer in English.";
       const aiResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.0-flash',
         contents: `You are VoteGuide AI, an assistant helping an Indian citizen with the election process. ${langPrompt} Keep your answer brief, friendly, and helpful (max 3 sentences). User asks: ${message}`
       });
       return {
@@ -135,7 +135,7 @@ Classify this message into exactly ONE of these intents and respond with ONLY a 
 
   try {
     const result = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: prompt,
       config: { temperature: 0 }
     });
@@ -420,7 +420,7 @@ const getChatResponse = async (message, language, ip) => {
     if (ai) {
       try {
         const aiResponse = await ai.models.generateContent({
-          model: 'gemini-2.5-flash',
+          model: 'gemini-2.0-flash',
           contents: `You are VoteGuide AI, an expert assistant on the Indian election process. The user has just completed their full voter registration journey. ${langPrompt} Answer their question helpfully and clearly. User says: ${message}`
         });
         return {
@@ -475,7 +475,7 @@ app.post('/api/ai-chat', async (req, res) => {
 
   try {
     const aiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-2.0-flash',
       contents: `You are VoteGuide AI, an expert assistant on the Indian election process, voting rights, democracy, and civic education. ${langPrompt} Answer the user's question helpfully, clearly, and concisely (max 4-5 sentences). If the question is completely unrelated to elections or civics, politely redirect them. User asks: ${message}`
     });
     res.json({ message: aiResponse.text });
