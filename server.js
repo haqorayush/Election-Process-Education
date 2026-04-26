@@ -165,8 +165,8 @@ const getChatResponse = async (message, language, ip) => {
   // Handle Simulation Mode Steps
   if (userState.simulation_step) {
     if (userState.simulation_step === 'id_check') {
-      if (msg.includes('yes') || msg.includes('i have')) {
-        userState.simulation_step = 'evm_machine';
+      userState.simulation_step = 'evm_machine';
+      if (msg.includes('yes') || msg.includes('i have') || msg.includes('yep')) {
         return {
           message: "Great! Next, you will be directed to the voting compartment. You will see the Electronic Voting Machine (EVM) with blue buttons next to candidate names and symbols. Do you know how to cast your vote on it?",
           stage: 'ready_to_vote',
