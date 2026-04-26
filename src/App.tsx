@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import './App.css';
-import { Send, MapPin, CheckCircle, User, Info, FileText, ExternalLink, Sun, Moon, Download, Globe, Map, X, Copy } from 'lucide-react';
+import { Send, MapPin, CheckCircle, User, Info, FileText, ExternalLink, Sun, Moon, Download, Globe, Map, X, Copy, MessageSquare, Bot } from 'lucide-react';
 import jsPDF from 'jspdf';
 import ReactMarkdown from 'react-markdown';
 
+type ChatMode = 'guided' | 'ai';
+
 function App() {
-  const [messages, setMessages] = useState<{sender: string, text: string, actions?: any[]}[]>([]);
+  const [messages, setMessages] = useState<{sender: string, text: string, actions?: any[], suggestions?: string[]}[]>([]);
+  const [aiMessages, setAiMessages] = useState<{sender: string, text: string}[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [userState, setUserState] = useState({ stage: 'unknown' });
   const [isTyping, setIsTyping] = useState(false);
@@ -15,6 +18,7 @@ function App() {
   const [showMap, setShowMap] = useState(false);
   const [userLocation, setUserLocation] = useState<{lat: number, lng: number} | null>(null);
   const [isLocating, setIsLocating] = useState(false);
+  const [chatMode, setChatMode] = useState<ChatMode>('guided');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -59,7 +63,7 @@ function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isTyping]);
+  }, [messages, aiMessages, isTyping]);
 
   const hasInitialized = useRef(false);
 
@@ -70,6 +74,16 @@ function App() {
       hasInitialized.current = true;
     }
   }, [isDarkMode]);
+
+  // AI chat initial greeting
+  useEffect(() => {
+    if (chatMode === 'ai' && aiMessages.length === 0) {
+      setAiMessages([{
+        sender: 'bot',
+        text: "🤖 **AI Assistant Mode** — Ask me anything about the Indian election process, voting rights, democracy, EVM machines, or civic education. I'm powered by Google Gemini!"
+      }]);
+    }
+  }, [chatMode]);
 
   const downloadPDF = () => {
     const doc = new jsPDF();
@@ -156,7 +170,34 @@ function App() {
     const textToSend = messageText || inputMessage;
     if (!textToSend.trim()) return;
 
-    // Add user message to UI
+    if (chatMode === 'ai') {
+      // AI Chat Mode — send to /api/ai-chat
+      setAiMessages(prev => [...prev, { sender: 'user', text: textToSend }]);
+      setInputMessage('');
+      setIsTyping(true);
+
+      try {
+        const apiUrl = import.meta.env.MODE === 'production' ? '/api/ai-chat' : 'http://localhost:3000/api/ai-chat';
+        const response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: textToSend, language }),
+        });
+        const data = await response.json();
+
+        setTimeout(() => {
+          setIsTyping(false);
+          setAiMessages(prev => [...prev, { sender: 'bot', text: data.message }]);
+        }, 600);
+      } catch (error) {
+        console.error("Error connecting to AI:", error);
+        setIsTyping(false);
+        setAiMessages(prev => [...prev, { sender: 'bot', text: 'Sorry, I could not connect to the AI service. Please try again.' }]);
+      }
+      return;
+    }
+
+    // Guided Mode — existing logic
     if (textToSend !== 'hello') {
        setMessages(prev => [...prev, { sender: 'user', text: textToSend }]);
     }
@@ -175,7 +216,7 @@ function App() {
 
       setTimeout(() => {
          setIsTyping(false);
-         setMessages(prev => [...prev, { sender: 'bot', text: data.message, actions: data.actions }]);
+         setMessages(prev => [...prev, { sender: 'bot', text: data.message, actions: data.actions, suggestions: data.suggestions }]);
          setUserState({ stage: data.stage });
       }, 600); // Artificial delay for natural feel
 
@@ -185,11 +226,17 @@ function App() {
     }
   };
 
+  const handleSuggestionClick = (suggestion: string) => {
+    handleSend(suggestion);
+  };
+
   const t = {
     journey: language === 'en' ? 'Your Journey' : 'आपकी यात्रा',
     tagline: language === 'en' ? 'Your intelligent guide to the Indian election process.' : 'भारतीय चुनाव प्रक्रिया के लिए आपका बुद्धिमान मार्गदर्शक।',
     assistant: language === 'en' ? 'Civic Assistant' : 'नागरिक सहायक',
-    placeholder: language === 'en' ? 'Type your response or ask a question...' : 'अपनी प्रतिक्रिया टाइप करें या प्रश्न पूछें...'
+    placeholder: chatMode === 'ai' 
+      ? (language === 'en' ? 'Ask anything about elections...' : 'चुनावों के बारे में कुछ भी पूछें...')
+      : (language === 'en' ? 'Type your response or ask a question...' : 'अपनी प्रतिक्रिया टाइप करें या प्रश्न पूछें...')
   };
 
   const renderTimeline = () => {
@@ -221,6 +268,8 @@ function App() {
       </div>
     );
   };
+
+  const currentMessages = chatMode === 'guided' ? messages : aiMessages;
 
   return (
     <motion.div 
@@ -325,6 +374,24 @@ function App() {
              transition={{ repeat: Infinity, duration: 2 }} 
              className="status-indicator"
            ></motion.span>
+
+           {/* Chat Mode Tab Switcher */}
+           <div className="chat-tabs">
+             <button 
+               className={`chat-tab ${chatMode === 'guided' ? 'active' : ''}`}
+               onClick={() => setChatMode('guided')}
+             >
+               <MessageSquare size={14} />
+               <span>Guided</span>
+             </button>
+             <button 
+               className={`chat-tab ${chatMode === 'ai' ? 'active' : ''}`}
+               onClick={() => setChatMode('ai')}
+             >
+               <Bot size={14} />
+               <span>AI Chat</span>
+             </button>
+           </div>
            
            <div style={{ marginLeft: 'auto', display: 'flex', gap: '1rem' }}>
              <button className="theme-toggle" onClick={() => setLanguage(lang => lang === 'en' ? 'hi' : 'en')} title="Toggle Language">
@@ -339,15 +406,15 @@ function App() {
         
         <div className="messages-area">
           <AnimatePresence initial={false}>
-            {messages.map((msg, idx) => (
+            {currentMessages.map((msg, idx) => (
               <motion.div 
-                key={idx} 
+                key={`${chatMode}-${idx}`} 
                 initial={{ opacity: 0, y: 20, scale: 0.95 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 transition={{ type: "spring", stiffness: 260, damping: 20 }}
                 className={`message-wrapper ${msg.sender}`}
               >
-                {msg.sender === 'bot' && <div className="avatar bot-avatar"><MapPin size={16}/></div>}
+                {msg.sender === 'bot' && <div className="avatar bot-avatar">{chatMode === 'ai' ? <Bot size={16}/> : <MapPin size={16}/>}</div>}
                 <div className={`message bubble ${msg.sender}`}>
                   {msg.sender === 'bot' ? (
                     <div className="markdown-body">
@@ -358,7 +425,7 @@ function App() {
                   )}
                   
                   {/* Render Actions if any */}
-                  {msg.actions && msg.actions.map((act, i) => (
+                  {msg.actions && msg.actions.map((act: any, i: number) => (
                      <div key={i} className="action-pill">
                        {act.name === 'show_checklist' && <span className="pill"><FileText size={14}/> Checklist Available in Panel</span>}
                        {act.name === 'start_simulation' && <span className="pill highlight"><Info size={14}/> Simulation Started</span>}
@@ -374,6 +441,24 @@ function App() {
                        {act.name === 'show_electoral_roll_link' && <a href="https://electoralsearch.eci.gov.in/" target="_blank" rel="noopener noreferrer" className="pill highlight"><ExternalLink size={14}/> Search Electoral Roll</a>}
                      </div>
                   ))}
+
+                  {/* Render Quick-Reply Suggestion Buttons */}
+                  {msg.sender === 'bot' && msg.suggestions && msg.suggestions.length > 0 && idx === currentMessages.length - 1 && (
+                    <div className="suggestion-buttons">
+                      {msg.suggestions.map((suggestion: string, sIdx: number) => (
+                        <motion.button
+                          key={sIdx}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.1 * sIdx + 0.3 }}
+                          className="suggestion-btn"
+                          onClick={() => handleSuggestionClick(suggestion)}
+                        >
+                          {suggestion}
+                        </motion.button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 {msg.sender === 'user' && <div className="avatar user-avatar"><User size={16}/></div>}
               </motion.div>
@@ -386,7 +471,7 @@ function App() {
                  exit={{ opacity: 0, scale: 0.9 }}
                  className="message-wrapper bot"
                >
-                  <div className="avatar bot-avatar"><MapPin size={16}/></div>
+                  <div className="avatar bot-avatar">{chatMode === 'ai' ? <Bot size={16}/> : <MapPin size={16}/>}</div>
                   <div className="message bubble bot typing">
                     <div className="dot"></div><div className="dot"></div><div className="dot"></div>
                   </div>

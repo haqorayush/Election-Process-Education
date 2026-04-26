@@ -704,3 +704,93 @@ body {
   text-decoration: underline;
 }
 
+/* Chat Tab Switcher */
+.chat-tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: 1.5rem;
+  background: var(--input-bg);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+}
+
+.chat-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.chat-tab.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 2px 8px rgba(139, 92, 246, 0.35);
+}
+
+.chat-tab:not(.active):hover {
+  color: var(--text-main);
+  background: var(--border);
+}
+
+/* Suggestion Buttons */
+.suggestion-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.suggestion-btn {
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--primary);
+  border-radius: 20px;
+  background: rgba(139, 92, 246, 0.08);
+  color: var(--primary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.suggestion-btn:hover {
+  background: var(--primary);
+  color: white;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(139, 92, 246, 0.35);
+}
+
+.suggestion-btn:active {
+  transform: translateY(0);
+}
+
+body.light-mode .suggestion-buttons {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+body.light-mode .suggestion-btn {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+body.light-mode .suggestion-btn:hover {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+

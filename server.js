@@ -158,7 +158,8 @@ const getChatResponse = async (message, language, ip) => {
       message: "Hello! I am VoteGuide AI, your guide to the Indian election process. Let's get started. Are you 18 years or older?",
       stage: 'unknown',
       next_step: 'confirm_age',
-      actions: []
+      actions: [],
+      suggestions: ['Yes, I am 18+', 'No, I am under 18']
     };
   }
 
@@ -171,14 +172,16 @@ const getChatResponse = async (message, language, ip) => {
           message: "Great! Next, you will be directed to the voting compartment. You will see the Electronic Voting Machine (EVM) with blue buttons next to candidate names and symbols. Do you know how to cast your vote on it?",
           stage: 'ready_to_vote',
           next_step: 'simulation_evm',
-          actions: []
+          actions: [],
+          suggestions: ['Yes, I know', 'No, explain please']
         };
       } else {
         return await fallbackOrGemini(message, language, {
           message: "Remember, you must bring a valid ID like Voter ID, Aadhaar, or PAN. Once verified, you proceed to the EVM machine. Do you know how to cast your vote on the EVM?",
           stage: 'ready_to_vote',
           next_step: 'simulation_evm',
-          actions: []
+          actions: [],
+          suggestions: ['Yes, I know', 'No, explain please']
         });
       }
     } else if (userState.simulation_step === 'evm_machine') {
@@ -188,14 +191,16 @@ const getChatResponse = async (message, language, ip) => {
           message: "Excellent! You press the blue button, see the red light, hear the beep, and verify on the VVPAT. Simulation complete! You are fully prepared for the real day. Just reply 'voted' when you actually cast your vote!",
           stage: 'ready_to_vote',
           next_step: 'simulation_complete',
-          actions: []
+          actions: [],
+          suggestions: ['I have voted!', 'Start Walkthrough']
         };
       } else {
         return await fallbackOrGemini(message, language, {
           message: "It's simple: press the blue button next to your chosen candidate's symbol. A red light will glow, and you'll hear a beep. Check the VVPAT machine to see a printed slip of your vote for 7 seconds. Simulation complete! Reply 'voted' on election day!",
           stage: 'ready_to_vote',
           next_step: 'simulation_complete',
-          actions: []
+          actions: [],
+          suggestions: ['I have voted!', 'Start Walkthrough']
         });
       }
     }
@@ -208,7 +213,8 @@ const getChatResponse = async (message, language, ip) => {
       message: "Welcome to the Voting Day Simulation! First, you'll enter the polling booth. A polling officer will check your name on the voter list and ask for your ID. Do you have an approved ID ready?",
       stage: 'ready_to_vote',
       next_step: 'simulation_id_check',
-      actions: [{ type: 'ui_action', name: 'start_simulation' }]
+      actions: [{ type: 'ui_action', name: 'start_simulation' }],
+      suggestions: ['Yes, I have my ID', 'No, I don\'t']
     };
   }
 
@@ -276,7 +282,8 @@ const getChatResponse = async (message, language, ip) => {
         message: "Great, you are eligible to vote! Next step is to register for a Voter ID. Have you already applied for or received your Voter ID?",
         stage: 'eligible_not_registered',
         next_step: 'check_voter_id',
-        actions: []
+        actions: [],
+        suggestions: ['Yes, I have it', 'No, I need to apply']
       };
     } else if (isNegative || (ageNum > 0 && ageNum < 18)) {
       userState.stage = 'not_eligible';
@@ -285,14 +292,16 @@ const getChatResponse = async (message, language, ip) => {
         message: "It looks like you are under 18 and currently not eligible to vote. You can apply once you turn 18. Would you still like to learn about how the process works for the future?",
         stage: 'not_eligible',
         next_step: 'offer_education',
-        actions: []
+        actions: [],
+        suggestions: ['Yes, tell me more', 'No, thanks']
       };
     } else {
       return await fallbackOrGemini(message, language, {
         message: "To guide you properly, first let me check your eligibility. Are you 18 or above?",
         stage: 'unknown',
         next_step: 'confirm_age',
-        actions: []
+        actions: [],
+        suggestions: ['Yes, I am 18+', 'No, I am under 18']
       });
     }
   }
@@ -306,7 +315,8 @@ const getChatResponse = async (message, language, ip) => {
         message: "Excellent! Since you are registered, your next step is to ensure your name is on the electoral roll. Have you checked the voter list recently?",
         stage: 'registered',
         next_step: 'check_electoral_roll',
-        actions: []
+        actions: [],
+        suggestions: ['Yes, I checked', 'No, not yet']
       };
     } else if (isNegative || msg.includes('do not have') || msg.includes("don't have") || (msg.includes('no') && msg.includes('proof')) || msg.includes('without') || msg.includes('missing') || msg.includes('lack')) {
       if (msg.includes('address')) {
@@ -314,21 +324,24 @@ const getChatResponse = async (message, language, ip) => {
           message: "If you don't have a standard address proof, you can use recent utility bills (water/electricity/gas), a bank/post office passbook, or a registered rent agreement. Are you ready to apply online via the Voters' Service Portal?",
           stage: 'eligible_not_registered',
           next_step: 'apply_voter_id',
-          actions: [{ type: 'ui_action', name: 'show_checklist' }]
+          actions: [{ type: 'ui_action', name: 'show_checklist' }],
+          suggestions: ['Yes, I\'m ready', 'I need more info']
         };
       } else if (msg.includes('age') || msg.includes('birth')) {
         return {
           message: "If you lack a birth certificate, you can use your 10th or 12th class mark sheet, PAN card, Aadhaar card, or a driving license as proof of age. Are you ready to apply?",
           stage: 'eligible_not_registered',
           next_step: 'apply_voter_id',
-          actions: [{ type: 'ui_action', name: 'show_checklist' }]
+          actions: [{ type: 'ui_action', name: 'show_checklist' }],
+          suggestions: ['Yes, I\'m ready', 'I need more info']
         };
       } else {
         return {
           message: "No problem. You can apply online via the Voters' Service Portal using Form 6. I've brought up the checklist of documents you will need.",
           stage: 'eligible_not_registered',
           next_step: 'apply_voter_id',
-          actions: [{ type: 'ui_action', name: 'show_checklist' }]
+          actions: [{ type: 'ui_action', name: 'show_checklist' }],
+          suggestions: ['Done, I applied!', 'I have my Voter ID']
         };
       }
     } else {
@@ -336,7 +349,8 @@ const getChatResponse = async (message, language, ip) => {
         message: "Have you already applied for or received your Voter ID?",
         stage: 'eligible_not_registered',
         next_step: 'check_voter_id',
-        actions: []
+        actions: [],
+        suggestions: ['Yes, I have it', 'No, I need to apply']
       });
     }
   }
@@ -349,28 +363,32 @@ const getChatResponse = async (message, language, ip) => {
         message: "Perfect. You are ready to vote! Familiarize yourself with the candidates in your constituency, and remember your polling station location. Would you like to try a simulation of voting day?",
         stage: 'ready_to_vote',
         next_step: 'prepare_for_voting',
-        actions: [{ type: 'ui_action', name: 'offer_simulation' }]
+        actions: [{ type: 'ui_action', name: 'offer_simulation' }],
+        suggestions: ['Start Walkthrough', 'I have voted!']
       };
     } else if (isNegative || msg.includes('check for me') || msg.includes('confirm it') || msg.includes('you check') || msg.includes('check it')) {
       return {
         message: "I don't have access to your personal electoral records for privacy reasons. However, you can easily verify it yourself using the official portal. I've sent the link below.",
         stage: 'registered',
         next_step: 'check_electoral_roll',
-        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }]
+        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }],
+        suggestions: ['Done, I checked', 'Show me the link']
       };
     } else if (msg.includes('link') || msg.includes('where') || msg.includes('portal')) {
       return {
         message: "Here is the link to the official Electoral Search portal. You can search by your EPIC (Voter ID) number. Let me know when you are done!",
         stage: 'registered',
         next_step: 'check_electoral_roll',
-        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }]
+        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }],
+        suggestions: ['Done, I checked']
       };
     } else {
       return await fallbackOrGemini(message, language, {
         message: "It's important to check your name on the electoral roll before voting day, even if you have a card. You can do this on the official portal. Let me know once you've confirmed it.",
         stage: 'registered',
         next_step: 'check_electoral_roll',
-        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }]
+        actions: [{ type: 'ui_action', name: 'show_electoral_roll_link' }],
+        suggestions: ['Yes, I checked', 'No, not yet']
       });
     }
   }
@@ -383,14 +401,16 @@ const getChatResponse = async (message, language, ip) => {
         message: "Congratulations on exercising your right to vote! Thank you for participating in the democratic process.",
         stage: 'completed',
         next_step: 'none',
-        actions: [{ type: 'ui_action', name: 'show_celebration' }]
+        actions: [{ type: 'ui_action', name: 'show_celebration' }],
+        suggestions: ['Restart Journey']
       };
     }
     return await fallbackOrGemini(message, language, {
       message: "You are all set for voting day! Remember to bring your Voter ID or another approved photo ID. Would you like a walkthrough of the booth?",
       stage: 'ready_to_vote',
       next_step: 'go_vote',
-      actions: [{ type: 'ui_action', name: 'offer_simulation' }]
+      actions: [{ type: 'ui_action', name: 'offer_simulation' }],
+      suggestions: ['Start Walkthrough', 'I have voted!']
     });
   }
 
@@ -441,6 +461,28 @@ app.post('/api/chat', async (req, res) => {
   }
 
   res.json(response);
+});
+
+// Dedicated AI Chat endpoint — free-form Gemini Q&A (no state machine)
+app.post('/api/ai-chat', async (req, res) => {
+  const { message, language } = req.body;
+  const lang = language || 'en';
+  const langPrompt = lang === 'hi' ? 'Keep your answer entirely in Hindi.' : 'Keep your answer in English.';
+
+  if (!ai) {
+    return res.json({ message: 'AI Assistant is not available. Please add a GEMINI_API_KEY to enable this feature.' });
+  }
+
+  try {
+    const aiResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: `You are VoteGuide AI, an expert assistant on the Indian election process, voting rights, democracy, and civic education. ${langPrompt} Answer the user's question helpfully, clearly, and concisely (max 4-5 sentences). If the question is completely unrelated to elections or civics, politely redirect them. User asks: ${message}`
+    });
+    res.json({ message: aiResponse.text });
+  } catch (err) {
+    console.error('AI Chat Error:', err.message);
+    res.json({ message: 'Sorry, I encountered an error processing your question. Please try again.' });
+  }
 });
 
 app.get('/api/state', (req, res) => {
