@@ -67,12 +67,18 @@ function App() {
   }, [messages, aiMessages, isTyping]);
 
 
+  const initialLanguage = useRef(language);
+  const initialized = useRef(false);
   // Initial greeting - re-trigger if language changes and no real messages exist
   useEffect(() => {
-    if (messages.length <= 1) {
-      // Clear messages and re-send hello to get localized greeting
-      setMessages([]);
+    if (!initialized.current || initialLanguage.current !== language) {
+      // If language changed, we want to clear and re-greet
+      if (initialized.current && initialLanguage.current !== language) {
+        setMessages([]);
+      }
       handleSend('hello');
+      initialized.current = true;
+      initialLanguage.current = language;
     }
   }, [language]);
 

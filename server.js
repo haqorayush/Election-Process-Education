@@ -12,25 +12,19 @@ const app = express();
 app.set('trust proxy', 1);
 const port = 3000;
 
-// Initialize Gemini API (Will be null if key is missing)
+// Log all requests
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url} - Origin: ${req.headers.origin}`);
+  next();
+});
+
+// Simple CORS - Allow everything for debugging
+app.use(cors());
+
+// Initialize Gemini API
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
 
-// Add security headers
-app.use(helmet());
-
-// Apply rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per window
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
-
-// Restrict CORS
-app.use(cors({
-  origin: ['http://localhost:5173', 'http://127.0.0.1:5173'], // Restrict to frontend origin
-  methods: ['GET', 'POST']
-}));
+// Body parser
 app.use(bodyParser.json());
 
 // Simple state management (in a real app, this would be tied to a session/user ID in a DB)
@@ -113,11 +107,19 @@ const fallbackOrGemini = async (message, language, fallbackResponse) => {
     try {
       const langPrompt = language === 'hi' ? "Keep your answer entirely in Hindi." : "Keep your answer in English.";
       const aiResponse = await ai.models.generateContent({
-        model: 'gemini-flash-latest',
-        contents: `You are VoteGuide AI, an assistant helping an Indian citizen with the election process. ${langPrompt} Keep your answer brief, friendly, and helpful (max 3 sentences). User asks: ${message}`
+        model: 'gemini-flash-lite-latest',
+        contents: `You are VoteGuide AI, an assistant helping an Indian citizen with the election process. ${langPrompt} Keep your answer brief, friendly, and helpful (max 3 sentences). User asks: ${message}`,
+        config: {
+          safetySettings: [
+            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+          ]
+        }
       });
       return {
-        message: aiResponse.text,
+        message: aiResponse.text || "I'm sorry, I cannot answer that right now.",
         stage: fallbackResponse.stage,
         next_step: 'gemini_answered',
         actions: fallbackResponse.actions
@@ -156,12 +158,29 @@ Classify this message into exactly ONE of these intents and respond with ONLY a 
 
   try {
     const result = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
+      model: 'gemini-flash-lite-latest',
       contents: prompt,
-      config: { temperature: 0 }
+      config: { 
+        temperature: 0,
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
+      }
     });
-    const text = result.text.trim().replace(/```json|```/g, '').trim();
-    return JSON.parse(text);
+    
+    const rawText = result.text || '';
+    console.log(`[AI Raw Response] ${rawText}`);
+    
+    const cleanText = rawText.trim().replace(/```json|```/g, '').trim();
+    if (!cleanText) {
+      console.warn('AI returned empty response');
+      return { intent: 'unknown', value: null };
+    }
+    
+    return JSON.parse(cleanText);
   } catch (e) {
     console.error('Intent classification error:', e.message);
     return { intent: 'unknown', value: null };
@@ -454,11 +473,19 @@ const getChatResponse = async (message, language, ip) => {
     if (ai) {
       try {
         const aiResponse = await ai.models.generateContent({
-          model: 'gemini-flash-latest',
-          contents: `You are VoteGuide AI, an expert assistant on the Indian election process. The user has just completed their full voter registration journey. ${langPrompt} Answer their question helpfully and clearly. User says: ${message}`
+          model: 'gemini-flash-lite-latest',
+          contents: `You are VoteGuide AI, an expert assistant on the Indian election process. The user has just completed their full voter registration journey. ${langPrompt} Answer their question helpfully and clearly. User says: ${message}`,
+          config: {
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+            ]
+          }
         });
         return {
-          message: aiResponse.text,
+          message: aiResponse.text || "I'm sorry, I'm having trouble thinking of a response right now.",
           stage: 'completed',
           next_step: 'gemini_answered',
           actions: []
@@ -514,10 +541,18 @@ app.post('/api/ai-chat', async (req, res) => {
 
   try {
     const aiResponse = await ai.models.generateContent({
-      model: 'gemini-flash-latest',
-      contents: `You are VoteGuide AI, an expert assistant on the Indian election process, voting rights, democracy, and civic education. ${langPrompt} Answer the user's question helpfully, clearly, and concisely (max 4-5 sentences). If the question is completely unrelated to elections or civics, politely redirect them. User asks: ${message}`
+      model: 'gemini-flash-lite-latest',
+      contents: `You are VoteGuide AI, an expert assistant on the Indian election process, voting rights, democracy, and civic education. ${langPrompt} Answer the user's question helpfully, clearly, and concisely (max 4-5 sentences). If the question is completely unrelated to elections or civics, politely redirect them. User asks: ${message}`,
+      config: {
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+        ]
+      }
     });
-    res.json({ message: aiResponse.text });
+    res.json({ message: aiResponse.text || "I'm sorry, I'm unable to process that request." });
   } catch (err) {
     console.error('AI Chat Error:', err.message);
     res.json({ message: 'Sorry, I encountered an error processing your question. Please try again.' });
