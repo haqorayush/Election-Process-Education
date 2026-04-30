@@ -32,7 +32,7 @@ To ensure a fluid experience, we implemented a **Gemini-powered Intent Classifie
 - **Architecture**: RESTful API communicating with a Gemini-powered intent classifier and a conversational state machine.
 
 ## 🤔 Assumptions Made
-- **User Device**: Users have access to modern browsers (desktop or mobile) and basic internet connectivity.
+- **User Device**: Users have access to modern desktop browsers and basic internet connectivity.
 - **Language**: The initial MVP caters to English and Hindi users (`hi` translation dictionary implemented).
 - **Session Handling**: For simplicity in this hackathon submission, session state is tied to the user's IP address rather than a fully authenticated user account.
 - **Accuracy**: The checklist and timelines mirror the general process of the Election Commission of India (ECI), but real-world dates and forms are subject to change by the ECI.
