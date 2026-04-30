@@ -12,8 +12,11 @@ async function testGemini() {
     console.log("Key found. Testing Gemini API connection...");
     const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: 'Say hello world'
+      model: 'gemini-2.5-flash-lite',
+      contents: 'Say hello world',
+      config: {
+        maxOutputTokens: 65536
+      }
     });
     console.log("SUCCESS! Gemini API replied with:");
     console.log("---");

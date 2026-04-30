@@ -10,7 +10,7 @@ dotenv.config();
 
 const app = express();
 app.set('trust proxy', 1);
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 // Log all requests
 app.use((req, res, next) => {
@@ -21,8 +21,36 @@ app.use((req, res, next) => {
 // Simple CORS - Allow everything for debugging
 app.use(cors());
 
+app.use(helmet({
+  crossOriginResourcePolicy: false
+}));
+app.use('/api', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false
+}));
+
 // Initialize Gemini API
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
+const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_MAX_OUTPUT_TOKENS = 65536;
+const GEMINI_SAFETY_SETTINGS = [
+  { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
+];
+
+const generateGeminiContent = async ({ contents, config = {} }) => ai.models.generateContent({
+  model: GEMINI_MODEL,
+  contents,
+  config: {
+    maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+    safetySettings: GEMINI_SAFETY_SETTINGS,
+    ...config
+  }
+});
 
 // Body parser
 app.use(bodyParser.json());
@@ -76,6 +104,8 @@ const hindiDictionary = {
   "If you don't have a standard address proof, you can use recent utility bills (water/electricity/gas), a bank/post office passbook, or a registered rent agreement. Are you ready to apply online via the Voters' Service Portal?": "यदि आपके पास पते का प्रमाण नहीं है, तो आप हाल के बिल या पासबुक का उपयोग कर सकते हैं। क्या आप आवेदन करने के लिए तैयार हैं?",
   "If you lack a birth certificate, you can use your 10th or 12th class mark sheet, PAN card, Aadhaar card, or a driving license as proof of age. Are you ready to apply?": "यदि आपके पास जन्म प्रमाण पत्र नहीं है, तो आप 10वीं/12वीं की मार्कशीट, पैन, आधार या ड्राइविंग लाइसेंस का उपयोग कर सकते हैं।",
   "If you are missing certain documents, the Election Commission accepts several alternatives. For example, Aadhaar can serve as both age and identity proof. Shall I bring up the checklist so you can apply?": "यदि कुछ दस्तावेज नहीं हैं, तो चुनाव आयोग कई विकल्पों को स्वीकार करता है। क्या मैं चेकलिस्ट लाऊं?",
+  "You can still prepare for the future. The registration checklist and election timeline are now available, and you can restart when you are eligible.": "आप अभी से भविष्य के लिए तैयारी कर सकते हैं। पंजीकरण चेकलिस्ट और चुनाव समयरेखा उपलब्ध हैं, और पात्र होने पर आप यात्रा फिर से शुरू कर सकते हैं।",
+  "No problem. You can come back when you are ready, and you can restart the journey anytime.": "कोई बात नहीं। जब आप तैयार हों तब वापस आ सकते हैं, और किसी भी समय यात्रा फिर से शुरू कर सकते हैं।",
   "Yes, I am 18+": "हाँ, मैं 18+ हूँ",
   "No, I am under 18": "नहीं, मैं 18 से कम हूँ",
   "Yes, I have it": "हाँ, मेरे पास है",
@@ -106,17 +136,8 @@ const fallbackOrGemini = async (message, language, fallbackResponse) => {
   if (ai && message.trim() !== '' && fallbackResponse.stage === 'completed') {
     try {
       const langPrompt = language === 'hi' ? "Keep your answer entirely in Hindi." : "Keep your answer in English.";
-      const aiResponse = await ai.models.generateContent({
-        model: 'gemini-flash-lite-latest',
+      const aiResponse = await generateGeminiContent({
         contents: `You are VoteGuide AI, an assistant helping an Indian citizen with the election process. ${langPrompt} Keep your answer brief, friendly, and helpful (max 3 sentences). User asks: ${message}`,
-        config: {
-          safetySettings: [
-            { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-            { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-          ]
-        }
       });
       return {
         message: aiResponse.text || "I'm sorry, I cannot answer that right now.",
@@ -157,17 +178,11 @@ Classify this message into exactly ONE of these intents and respond with ONLY a 
 - {"intent": "unknown"} — Cannot be determined`;
 
   try {
-    const result = await ai.models.generateContent({
-      model: 'gemini-flash-lite-latest',
+    const result = await generateGeminiContent({
       contents: prompt,
       config: { 
         temperature: 0,
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-        ]
+        maxOutputTokens: 512
       }
     });
     
@@ -350,9 +365,51 @@ const getChatResponse = async (message, language, ip) => {
     }
   }
 
+  // Current Stage: not_eligible (future voter education)
+  if (userState.stage === 'not_eligible') {
+    if (isAffirmative || msg.includes('learn') || msg.includes('process') || msg.includes('more') || msg.includes('बताएं')) {
+      return {
+        message: "You can still prepare for the future. The registration checklist and election timeline are now available, and you can restart when you are eligible.",
+        stage: 'not_eligible',
+        next_step: 'future_registration',
+        actions: [
+          { type: 'ui_action', name: 'show_checklist' },
+          { type: 'ui_action', name: 'show_timeline' }
+        ],
+        suggestions: ['Restart Journey']
+      };
+    } else if (isNegative || msg.includes('thanks') || msg.includes('धन्यवाद')) {
+      return {
+        message: "No problem. You can come back when you are ready, and you can restart the journey anytime.",
+        stage: 'not_eligible',
+        next_step: 'none',
+        actions: [],
+        suggestions: ['Restart Journey']
+      };
+    }
+
+    return {
+      message: "It looks like you are under 18 and currently not eligible to vote. You can apply once you turn 18. Would you still like to learn about how the process works for the future?",
+      stage: 'not_eligible',
+      next_step: 'offer_education',
+      actions: [],
+      suggestions: ['Yes, tell me more', 'No, thanks']
+    };
+  }
+
   // Current Stage: eligible_not_registered (Checking Voter ID status)
   if (userState.stage === 'eligible_not_registered') {
-    if (isAffirmative || msg.includes('i have it') || msg.includes('already')) {
+    if (msg.includes('applied') || msg.includes('ho gaya') || msg.includes('kar diya') || msg.includes('आवेदन') || msg.includes('हो गया')) {
+      userState.stage = 'registered';
+      userState.has_voter_id = 'yes';
+      return {
+        message: "Congratulations! You have successfully completed your voter registration process.\n\nHere is what happens next:\n1. **Reference Number**: You will soon receive a Reference Number for your application on your registered mobile number or email ID.\n2. **Track Application Status**: You can track the status of your application online using this Reference Number. You can visit the National Voters' Service Portal (NVSP - nvsp.in) or use the Voter Helpline App. Click on the 'Track Application Status' option and enter your Reference Number.\n3. **Name in Electoral Roll**: Once your application is accepted, your name will be added to the electoral roll.\n4. **EPIC Card**: After that, your Voter ID Card (EPIC Card) will be sent to your address by post or you can obtain it through your Booth Level Officer (BLO).\n5. **Keep Checking**: It is always a good idea to keep checking your name in the voter list periodically or before elections to ensure your details are correct.\n\nCongratulations on taking an active role in India's democracy! Do vote and exercise your right.\n\nIf you have any more questions or need any further assistance, feel free to ask.",
+        stage: 'registered',
+        next_step: 'check_electoral_roll',
+        actions: [],
+        suggestions: ['Done, I checked', 'Show me the link']
+      };
+    } else if (isAffirmative || msg.includes('i have it') || msg.includes('already')) {
       userState.stage = 'registered';
       userState.has_voter_id = 'yes';
       return {
@@ -363,6 +420,7 @@ const getChatResponse = async (message, language, ip) => {
         suggestions: ['Yes, I checked', 'No, not yet']
       };
     } else if (isNegative || msg.includes('do not have') || msg.includes("don't have") || (msg.includes('no') && msg.includes('proof')) || msg.includes('without') || msg.includes('missing') || msg.includes('lack')) {
+      userState.has_voter_id = 'no';
       if (msg.includes('address')) {
         return {
           message: "If you don't have a standard address proof, you can use recent utility bills (water/electricity/gas), a bank/post office passbook, or a registered rent agreement. Are you ready to apply online via the Voters' Service Portal?",
@@ -378,15 +436,6 @@ const getChatResponse = async (message, language, ip) => {
           next_step: 'apply_voter_id',
           actions: [{ type: 'ui_action', name: 'show_checklist' }],
           suggestions: ['Yes, I\'m ready', 'I need more info']
-        };
-      } else if (msg.includes('applied') || msg.includes('ho gaya') || msg.includes('kar diya')) {
-        userState.stage = 'registered';
-        return {
-          message: "Congratulations! You have successfully completed your voter registration process.\n\nHere is what happens next:\n1. **Reference Number**: You will soon receive a Reference Number for your application on your registered mobile number or email ID.\n2. **Track Application Status**: You can track the status of your application online using this Reference Number. You can visit the National Voters' Service Portal (NVSP - nvsp.in) or use the Voter Helpline App. Click on the 'Track Application Status' option and enter your Reference Number.\n3. **Name in Electoral Roll**: Once your application is accepted, your name will be added to the electoral roll.\n4. **EPIC Card**: After that, your Voter ID Card (EPIC Card) will be sent to your address by post or you can obtain it through your Booth Level Officer (BLO).\n5. **Keep Checking**: It is always a good idea to keep checking your name in the voter list periodically or before elections to ensure your details are correct.\n\nCongratulations on taking an active role in India's democracy! Do vote and exercise your right.\n\nIf you have any more questions or need any further assistance, feel free to ask.",
-          stage: 'registered',
-          next_step: 'check_electoral_roll',
-          actions: [],
-          suggestions: ['Done, I checked', 'Show me the link']
         };
       } else {
         return {
@@ -472,17 +521,8 @@ const getChatResponse = async (message, language, ip) => {
     const langPrompt = language === 'hi' ? "Keep your answer entirely in Hindi." : "Keep your answer in English.";
     if (ai) {
       try {
-        const aiResponse = await ai.models.generateContent({
-          model: 'gemini-flash-lite-latest',
+        const aiResponse = await generateGeminiContent({
           contents: `You are VoteGuide AI, an expert assistant on the Indian election process. The user has just completed their full voter registration journey. ${langPrompt} Answer their question helpfully and clearly. User says: ${message}`,
-          config: {
-            safetySettings: [
-              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-            ]
-          }
         });
         return {
           message: aiResponse.text || "I'm sorry, I'm having trouble thinking of a response right now.",
@@ -540,17 +580,8 @@ app.post('/api/ai-chat', async (req, res) => {
   }
 
   try {
-    const aiResponse = await ai.models.generateContent({
-      model: 'gemini-flash-lite-latest',
+    const aiResponse = await generateGeminiContent({
       contents: `You are VoteGuide AI, an expert assistant on the Indian election process, voting rights, democracy, and civic education. ${langPrompt} Answer the user's question helpfully, clearly, and concisely (max 4-5 sentences). If the question is completely unrelated to elections or civics, politely redirect them. User asks: ${message}`,
-      config: {
-        safetySettings: [
-          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
-        ]
-      }
     });
     res.json({ message: aiResponse.text || "I'm sorry, I'm unable to process that request." });
   } catch (err) {
