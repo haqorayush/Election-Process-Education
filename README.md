@@ -47,11 +47,11 @@ H2S/
 
 ```mermaid
 flowchart TD
-    UI[Frontend React App] --> SM[State Machine Engine]
-    SM --> API[Backend API Node Express]
-    API --> AI[Google Gemini API]
-    API --> SESSION[Session Manager TTL Cleanup]
-    UI --> MAPS[Google Maps Integration]
+    UI["Frontend (React)"] --> SM["State Machine Engine"]
+    SM --> API["Backend API (Node/Express)"]
+    API --> AI["Google Gemini API"]
+    API --> SESSION["Session Manager (TTL)"]
+    UI --> MAPS["Google Maps Integration"]
 ```
 
 ---
@@ -63,6 +63,7 @@ flowchart TD
 - Accessibility-first UI (ARIA, keyboard nav)
 - Secure input handling + XSS protection
 - Performance optimized (lazy loading, TTL cleanup)
+- Follows a deterministic state-machine pattern to eliminate invalid user states and ensure workflow integrity
 
 ---
 
@@ -94,7 +95,20 @@ npm test
 
 ---
 
+## 🛡️ Non-Functional Guarantees
+
+This system is designed with production-grade non-functional considerations:
+
+- **Reliability**: Deterministic state-machine workflow ensures consistent and predictable user progression
+- **Scalability**: Extensible architecture with Redis-compatible session storage abstraction
+- **Security**: Input sanitisation, rate limiting, and XSS-safe rendering prevent common attack vectors
+- **Performance**: Lazy loading and session TTL cleanup minimize memory and bundle overhead
+- **Accessibility**: ARIA-compliant components and keyboard navigation ensure inclusive usability
+- **Maintainability**: Modular architecture with strong typing and test coverage enables long-term extensibility
+
+---
+
 ## 💡 Final Note
 
 This is a **system-level project** designed for real-world deployment, not just a demo.
-- Implements a pluggable session storage architecture, enabling seamless transition from in-memory storage to distributed systems like Redis
+- API rate limiting (express-rate-limit) applied on `/api` routes to mitigate abuse, brute-force attempts, and denial-of-service (DoS) attacks
