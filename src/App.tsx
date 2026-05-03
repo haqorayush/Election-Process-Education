@@ -21,63 +21,11 @@ import {
   User,
   X
 } from 'lucide-react';
-import jsPDF from 'jspdf';
 import ReactMarkdown from 'react-markdown';
+import { initialUserState } from './types';
+import type { ChatMode, ApiAction, Message, BackendState, ChatResponse, SendOptions } from './types';
 
-type ChatMode = 'guided' | 'ai';
-type Sender = 'user' | 'bot';
-type Stage = 'unknown' | 'eligible_not_registered' | 'registered' | 'ready_to_vote' | 'completed' | 'not_eligible';
-
-type ApiActionName =
-  | 'show_checklist'
-  | 'start_simulation'
-  | 'offer_simulation'
-  | 'show_electoral_roll_link'
-  | 'show_timeline'
-  | 'show_celebration';
-
-type ApiAction = {
-  type: 'ui_action' | string;
-  name: ApiActionName | string;
-};
-
-type Message = {
-  sender: Sender;
-  text: string;
-  actions?: ApiAction[];
-  suggestions?: string[];
-};
-
-type BackendState = {
-  age: number | null;
-  location: string | null;
-  has_voter_id: string;
-  stage: Stage;
-  simulation_step: 'id_check' | 'evm_machine' | null;
-  next_step?: string;
-};
-
-type ChatResponse = {
-  message: string;
-  stage: Stage;
-  next_step?: string;
-  actions?: ApiAction[];
-  suggestions?: string[];
-};
-
-type SendOptions = {
-  showUserMessage?: boolean;
-  replaceMessages?: boolean;
-  languageOverride?: string;
-};
-
-const initialUserState: BackendState = {
-  age: null,
-  location: null,
-  has_voter_id: 'unknown',
-  stage: 'unknown',
-  simulation_step: null
-};
+/* Types and initial state are imported from src/types.ts */
 
 const apiBase = import.meta.env.VITE_API_BASE_URL ?? (import.meta.env.PROD ? '' : 'http://localhost:3000');
 
@@ -307,6 +255,11 @@ function App() {
     }
   }, [isDarkMode]);
 
+  /** Keep the html lang attribute in sync with the active language. */
+  useEffect(() => {
+    document.documentElement.lang = language === 'hi' ? 'hi' : 'en';
+  }, [language]);
+
   useEffect(() => {
     if (bootstrapped.current) return;
     bootstrapped.current = true;
@@ -343,7 +296,9 @@ function App() {
     }
   }, []);
 
-  const downloadPDF = useCallback(() => {
+  /** Lazily imports jsPDF to avoid bundling ~230 KB on initial load. */
+  const downloadPDF = useCallback(async () => {
+    const { default: jsPDF } = await import('jspdf');
     const doc = new jsPDF();
     const primaryColor: [number, number, number] = [109, 40, 217];
     const textColor: [number, number, number] = [30, 30, 50];
@@ -561,7 +516,10 @@ function App() {
       transition={{ duration: 0.5, ease: 'easeOut' }}
       className="app-container"
     >
-      <div className="sidebar">
+      {/* Skip-to-content link for keyboard / screen-reader users */}
+      <a href="#chat-input" className="sr-only skip-link">Skip to chat</a>
+
+      <aside className="sidebar" aria-label="Journey progress">
         <motion.div
           initial={{ y: -20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -664,9 +622,9 @@ function App() {
             )}
           </AnimatePresence>
         </div>
-      </div>
+      </aside>
 
-      <div className="main-chat">
+      <main className="main-chat" aria-label="Chat area">
         <div className="chat-header">
           <h2>{t.assistant}</h2>
           <motion.span
@@ -687,17 +645,17 @@ function App() {
           </div>
 
           <div className="header-actions">
-            <button className="theme-toggle language-toggle" onClick={handleLanguageToggle} title="Toggle Language">
+            <button className="theme-toggle language-toggle" onClick={handleLanguageToggle} title="Toggle Language" aria-label={`Switch language to ${language === 'en' ? 'Hindi' : 'English'}`}>
               <Globe size={18} />
               <span>{language.toUpperCase()}</span>
             </button>
-            <button className="theme-toggle" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme">
+            <button className="theme-toggle" onClick={() => setIsDarkMode(!isDarkMode)} title="Toggle Theme" aria-label={isDarkMode ? 'Switch to light mode' : 'Switch to dark mode'}>
               {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </div>
 
-        <div className="messages-area">
+        <div className="messages-area" role="log" aria-live="polite" aria-label="Conversation">
           <AnimatePresence initial={false}>
             {currentMessages.map((msg, idx) => (
               <motion.div
@@ -711,7 +669,11 @@ function App() {
                 <div className={`message bubble ${msg.sender}`}>
                   {msg.sender === 'bot' ? (
                     <div className="markdown-body">
-                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                      <ReactMarkdown
+                        allowedElements={['p', 'strong', 'em', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'code', 'br']}
+                      >
+                        {msg.text}
+                      </ReactMarkdown>
                     </div>
                   ) : (
                     <p>{msg.text}</p>
@@ -758,23 +720,30 @@ function App() {
         </div>
 
         <div className="input-area">
+          <label htmlFor="chat-input" className="sr-only">
+            {t.placeholder}
+          </label>
           <input
+            id="chat-input"
             type="text"
             placeholder={t.placeholder}
+            aria-label={t.placeholder}
             value={inputMessage}
             onChange={(event) => setInputMessage(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && handleSend()}
+            autoComplete="off"
           />
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
             className="send-btn"
             onClick={() => handleSend()}
+            aria-label="Send message"
           >
             <Send size={18} />
           </motion.button>
         </div>
-      </div>
+      </main>
 
       <AnimatePresence>
         {showCelebration && (
@@ -805,6 +774,9 @@ function App() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               className="modal-content timeline-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Election Timeline"
               onClick={event => event.stopPropagation()}
             >
               <button className="modal-close" onClick={() => setShowTimeline(false)}>
@@ -838,6 +810,9 @@ function App() {
               animate={{ scale: 1, y: 0 }}
               exit={{ scale: 0.9, y: 20 }}
               className="modal-content"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Polling Booth Location"
               onClick={event => event.stopPropagation()}
             >
               <button className="modal-close" onClick={() => setShowMap(false)}>
@@ -854,15 +829,28 @@ function App() {
                     style={{ border: 0, borderRadius: '12px' }}
                     loading="lazy"
                     allowFullScreen
-                    src={`https://www.openstreetmap.org/export/embed.html?bbox=${userLocation.lng - 0.005}%2C${userLocation.lat - 0.005}%2C${userLocation.lng + 0.005}%2C${userLocation.lat + 0.005}&layer=mapnik&marker=${userLocation.lat + 0.001}%2C${userLocation.lng + 0.001}`}
+                    referrerPolicy="no-referrer-when-downgrade"
+                    src={`https://maps.google.com/maps?q=${userLocation.lat + 0.001},${userLocation.lng + 0.001}&z=14&output=embed`}
                   />
+
+                  <a
+                    href={`https://www.google.com/maps/search/polling+booth/@${userLocation.lat},${userLocation.lng},14z`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="btn-secondary modal-link"
+                    style={{ marginTop: '0.5rem' }}
+                  >
+                    <ExternalLink size={16} /> Open in Google Maps
+                  </a>
 
                   <button
                     className="btn-secondary"
+                    style={{ marginTop: '0.4rem' }}
                     onClick={() => {
                       void navigator.clipboard.writeText(`https://www.google.com/maps/search/?api=1&query=${userLocation.lat + 0.001},${userLocation.lng + 0.001}`);
                       window.alert('Google Maps Link Copied!');
                     }}
+                    aria-label="Copy Google Maps link to clipboard"
                   >
                     <Copy size={18} /> Copy Google Maps Link
                   </button>

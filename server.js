@@ -18,8 +18,15 @@ app.use((req, res, next) => {
   next();
 });
 
-// Simple CORS - Allow everything for debugging
-app.use(cors());
+// CORS configuration — restrict origins in production
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:5173', 'http://localhost:3000'];
+app.use(cors({
+  origin: process.env.NODE_ENV === 'production' ? allowedOrigins : true,
+  methods: ['GET', 'POST'],
+  credentials: false
+}));
 
 app.use(helmet({
   crossOriginResourcePolicy: false
@@ -33,7 +40,7 @@ app.use('/api', rateLimit({
 
 // Initialize Gemini API
 const ai = process.env.GEMINI_API_KEY ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }) : null;
-const GEMINI_MODEL = 'gemini-2.5-flash-lite';
+const GEMINI_MODEL = 'gemini-2.5-flash';
 const GEMINI_MAX_OUTPUT_TOKENS = 65536;
 const GEMINI_SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
@@ -42,6 +49,13 @@ const GEMINI_SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' }
 ];
 
+/**
+ * Sends a generation request to the Gemini API with shared defaults.
+ * @param {object} params
+ * @param {string} params.contents - The prompt or conversation contents.
+ * @param {object} [params.config] - Optional overrides for model config.
+ * @returns {Promise<import('@google/genai').GenerateContentResponse>}
+ */
 const generateGeminiContent = async ({ contents, config = {} }) => ai.models.generateContent({
   model: GEMINI_MODEL,
   contents,
@@ -52,13 +66,34 @@ const generateGeminiContent = async ({ contents, config = {} }) => ai.models.gen
   }
 });
 
-// Body parser
-app.use(bodyParser.json());
+// Body parser with size limit to prevent memory exhaustion attacks
+app.use(bodyParser.json({ limit: '16kb' }));
+
+/**
+ * Sanitises user-supplied string input.
+ * Returns an empty string for non-string values and caps length at 1000 characters
+ * to prevent excessively large payloads reaching the AI model.
+ * @param {unknown} input - Raw value from the request body.
+ * @returns {string} Cleaned, length-capped string.
+ */
+const sanitizeInput = (input) => {
+  if (typeof input !== 'string') return '';
+  return input.trim().slice(0, 1000);
+};
 
 // Simple state management (in a real app, this would be tied to a session/user ID in a DB)
 const userStates = new Map();
+const stateTimestamps = new Map();
+const STATE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+/**
+ * Retrieves (or creates) session state for a given client IP.
+ * Also refreshes the session's last-accessed timestamp.
+ * @param {string} ip - Client IP address used as the session key.
+ * @returns {{ age: number|null, location: string|null, has_voter_id: string, stage: string, simulation_step: string|null }}
+ */
 const getUserState = (ip) => {
+  stateTimestamps.set(ip, Date.now());
   if (!userStates.has(ip)) {
     userStates.set(ip, {
       age: null,
@@ -71,6 +106,10 @@ const getUserState = (ip) => {
   return userStates.get(ip);
 };
 
+/**
+ * Resets a user's journey back to the initial state.
+ * @param {string} ip - Client IP address.
+ */
 const resetUserState = (ip) => {
   userStates.set(ip, {
     age: null,
@@ -79,7 +118,19 @@ const resetUserState = (ip) => {
     stage: 'unknown',
     simulation_step: null
   });
+  stateTimestamps.set(ip, Date.now());
 };
+
+// Periodic cleanup of stale sessions (every 15 minutes)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, ts] of stateTimestamps) {
+    if (now - ts > STATE_TTL_MS) {
+      userStates.delete(ip);
+      stateTimestamps.delete(ip);
+    }
+  }
+}, 15 * 60 * 1000).unref();
 
 const hindiDictionary = {
   "Hello! I am VoteGuide AI, your guide to the Indian election process. Let's get started. Are you 18 years or older?": "नमस्ते! मैं वोटगाइड एआई हूं, जो भारतीय चुनाव प्रक्रिया में आपका मार्गदर्शक है। क्या आप 18 वर्ष या उससे अधिक के हैं?",
@@ -153,7 +204,13 @@ const fallbackOrGemini = async (message, language, fallbackResponse) => {
   return fallbackResponse;
 };
 
-// Use Gemini to classify intent so natural language advances the form
+/**
+ * Classifies user intent using Gemini for the given conversation stage.
+ * Falls back to { intent: 'unknown' } if the model is unavailable or errors.
+ * @param {string} message - The user's raw message text.
+ * @param {string} currentStage - The current journey stage for contextual classification.
+ * @returns {Promise<{ intent: string, value?: number }>}
+ */
 const classifyIntent = async (message, currentStage) => {
   if (!ai) return { intent: 'unknown', value: null };
 
@@ -202,6 +259,15 @@ Classify this message into exactly ONE of these intents and respond with ONLY a 
   }
 };
 
+/**
+ * Core state-machine handler for the guided election journey.
+ * Processes the user's message against the current session stage and
+ * returns a structured response with the next stage, actions, and suggestions.
+ * @param {string} message - Sanitised user message.
+ * @param {string} language - 'en' or 'hi'.
+ * @param {string} ip - Client IP for session lookup.
+ * @returns {Promise<{ message: string, stage: string, next_step: string, actions: Array, suggestions?: string[] }>}
+ */
 const getChatResponse = async (message, language, ip) => {
   const msg = message.toLowerCase();
   let userState = getUserState(ip);
@@ -552,10 +618,10 @@ const getChatResponse = async (message, language, ip) => {
 };
 
 app.post('/api/chat', async (req, res) => {
-  const { message, language } = req.body;
-  const lang = language || "en";
+  const message = sanitizeInput(req.body?.message);
+  const lang = ['en', 'hi'].includes(req.body?.language) ? req.body.language : 'en';
   const clientIp = req.ip || req.connection.remoteAddress;
-  const response = await getChatResponse(message || "", lang, clientIp);
+  const response = await getChatResponse(message, lang, clientIp);
 
   if (lang === 'hi') {
     if (hindiDictionary[response.message]) {
@@ -569,10 +635,13 @@ app.post('/api/chat', async (req, res) => {
   res.json(response);
 });
 
-// Dedicated AI Chat endpoint — free-form Gemini Q&A (no state machine)
+/**
+ * Free-form Gemini Q&A endpoint — no state machine, purely AI-driven.
+ * Input is sanitised and language is validated before reaching the model.
+ */
 app.post('/api/ai-chat', async (req, res) => {
-  const { message, language } = req.body;
-  const lang = language || 'en';
+  const message = sanitizeInput(req.body?.message);
+  const lang = ['en', 'hi'].includes(req.body?.language) ? req.body.language : 'en';
   const langPrompt = lang === 'hi' ? 'Keep your answer entirely in Hindi.' : 'Keep your answer in English.';
 
   if (!ai) {
