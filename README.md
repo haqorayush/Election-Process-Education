@@ -1,4 +1,4 @@
-# 🚀 VoteGuide.AI  
+# VoteGuide.AI  
 **AI-Assisted Civic Guidance Platform for Structured Election Awareness**
 
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
